@@ -1,0 +1,62 @@
+id,name,detailed_name,isdecimal
+1,Health,Max Health,FALSE
+2,Strength,Strength,FALSE
+3,Agility,Agility,FALSE
+4,Tactics,Tactics,FALSE
+5,Speed,Speed,FALSE
+6,Physical Damage,Physical Damage,FALSE
+7,Special Damage,Special Damage,FALSE
+8,Armor,Armor,FALSE
+9,Resistance,Resistance,FALSE
+10,Armor Penetration,Armor Penetration,FALSE
+11,Resistance Penetration,Resistance Penetration,FALSE
+12,Dodge Chance,Dodge Rating,FALSE
+13,Deflection Chance,Deflection Rating,FALSE
+14,Physical Critical Chance,Physical Critical Rating,FALSE
+15,Special Critical Chance,Special Critical Rating,FALSE
+16,Critical Damage,Critical Damage,TRUE
+17,Potency,Potency,TRUE
+18,Tenacity,Tenacity,TRUE
+19,Dodge,Dodge Percent Additive,TRUE
+20,Deflection,Deflection Percent Additive,TRUE
+21,Physical Critical Chance,Physical Critical Percent Additive,TRUE
+22,Special Critical Chance,Special Critical Percent Additive,TRUE
+23,Armor,Armor Percent Additive,TRUE
+24,Resistance,Resistance Percent Additive,TRUE
+25,Armor Penetration,Armor Penetration Percent Additive,TRUE
+26,Resistance Penetration,Resistance Penetration Percent Additive,TRUE
+27,Health Steal,Health Steal,TRUE
+28,Protection,Max Protection,FALSE
+29,Protection Ignore,Protection Ignore,TRUE
+30,Health Regen,Health Regen,TRUE
+31,Physical Damage,Physical Damage Percent Additive,TRUE
+32,Special Damage,Special Damage Percent Additive,TRUE
+33,Physical Accuracy,Dodge Negate Percent Additive,TRUE
+34,Special Accuracy,Deflection Negate Percent Additive,TRUE
+35,Physical Accuracy,Physical Critical Negate Percent Additive,TRUE
+36,Special Accuracy,Special Critical Negate Percent Additive,TRUE
+37,Physical Accuracy,Dodge Negate Rating,FALSE
+38,Special Accuracy,Deflection Negate Rating,FALSE
+39,Physical Critical Avoidance,Physical Critical Negate Rating,FALSE
+40,Special Critical Avoidance,Special Critical Negate Rating,FALSE
+41,Offense,Offense,FALSE
+42,Defense,Defense,FALSE
+43,Defense Penetration,Defense Penetration,FALSE
+44,Evasion,Evasion Rating,FALSE
+45,Critical Chance,Critical Rating,FALSE
+46,Accuracy,Evasion Negate Rating,FALSE
+47,Critical Avoidance,Critical Negate Rating,FALSE
+48,Offense,Offense Percent Additive,TRUE
+49,Defense,Defense Percent Additive,TRUE
+50,Defense Penetration,Defense Penetration Percent Additive,TRUE
+51,Evasion,Evasion Percent Additive,TRUE
+52,Accuracy,Evasion Negate Percent Additive,TRUE
+53,Critical Chance,Critical Chance Percent Additive,TRUE
+54,Critical Avoidance,Critical Negate Chance Percent Additive,TRUE
+55,Health,Max Health Percent Additive,TRUE
+56,Protection,Max Protection Percent Additive,TRUE
+57,Speed,Speed Percent Additive,TRUE
+58,Counter Attack,Counter Attack Rating,TRUE
+59,Taunt,Taunt,TRUE
+60,Target Defense Penetration,Target Defense Penetration Percent Additive,TRUE
+61,Mastery,Mastery,TRUE
