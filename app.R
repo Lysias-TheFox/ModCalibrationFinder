@@ -7,6 +7,7 @@ library(janitor)
 library(purrr)
 library(furrr)
 library(formattable)
+library(htmlwidgets)
 
 options(stringsAsFactors = FALSE)
 
@@ -270,12 +271,13 @@ ui <- fluidPage(
                          min = 111111111,
                          max = 999999999,
                          #value = 491988799,
-                         value = 587792678,
-                         #value = NULL,
+                         #value = 587792678,
+                         value = NULL,
                          width = '50%'
             ),
             actionButton(inputId = "pfetch_button",
-                         label = "Refresh Mod Data")
+                         label = "Refresh Mod Data"),
+            "(can take a minute)"
             # actionButton(inputId = "process_mods_button",
             #              label = "Analyze Mod Data (slow)")
         ),
