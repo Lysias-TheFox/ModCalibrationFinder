@@ -43,8 +43,8 @@ get.fresh.pdata <- function(a){
     pres <- POST(
         #"http://localhost:3200/player",
         "https://gasapi.info/comlink/player",
-                 content_type_json(),
-                 body = paylist)
+        content_type_json(),
+        body = paylist)
     pres$status_code
     pcontent <- pres$content %>% rawToChar() %>% fromJSON()
     return(pcontent)
@@ -328,10 +328,22 @@ ui <- fluidPage(
                                label = "Speed rolls",
                                choices = c(1,2,3,4),
                                selected = c(1,2,3,4))
-            ),
+        ),
         # verbatimTextOutput(outputId = "feedback2"),
-        formattableOutput("table"))
+        formattableOutput("table")),
+    p(strong("Speed Remainder"), " - Fractional speed remaining on the mod that will add to the next roll"),
+    p(strong("Cost"), " - Number of Attenuators required to calibrate"),
+    p(strong("Speed Hit %"), " - Chance that a calibration will give stats to speed (25% normally, 33% if
+another stat has 5-rolls)"),
+    p(strong("Avg +Speed"), " - Expected speed gain from any one calibration (combines Speed Remainder and Speed Hit %"),
+    p(strong("Speed per Cost"), " - Avg +Speed divided by Cost"),
+    p(strong("Weighted +Speed"), " - Expected speed gain, with each speed increment given additional value based on
+the final total speed (will prioritize higher speed mods)"),
+    p(strong("Weighted per cost"), " - Weighted +Speed divided by Cost. I consider this the best single metric
+for a calibration candidate, though the player should consider overall mod synergy, depth, and other factors.")
+    
 )
+
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
@@ -347,8 +359,8 @@ server <- function(input, output, session) {
         if(!pulled_acode %in% whitelist$ally_code){
             output$feedback1 <- renderText(paste0("Allycode ", pulled_acode, " is not whitelisted for this closed beta. I hope to release this more widely soon"))
         } else {
-        
-        # if(pulled_acode %in% whitelist$ally_code){
+            
+            # if(pulled_acode %in% whitelist$ally_code){
             
             # output$feedback1 <- renderText(paste0("Pulling data for ", pulled_acode))
             pdata_react$datapull <- get.fresh.pdata(input$acode)
