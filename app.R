@@ -1,3 +1,11 @@
+## Set speed weight intervals (select ~3-4)
+# Low = 10
+# Moderate = 25
+# High = 50
+# Extreme = 100
+## Precalc all intervals
+### Drill into speed limiting steps
+
 
 library(shiny)
 library(httr)
@@ -8,6 +16,7 @@ library(purrr)
 library(furrr)
 library(formattable)
 library(htmlwidgets)
+library(shinyWidgets)
 
 options(stringsAsFactors = FALSE)
 
@@ -20,7 +29,7 @@ modslot_shape <- read_rds("modslot_shape.rds")
 calibrate_cost_df <- read_rds("calibrate_cost_df.rds")
 prim_stat_name <- read_rds("prim_stat_name.rds")
 
-whitelist <- read_csv("unleashed_whitelist.csv")
+# whitelist <- read_csv("unleashed_whitelist.csv")
 
 
 # metares <- POST("http://localhost:3200/metadata")
@@ -45,14 +54,16 @@ get.fresh.pdata <- function(a){
         "https://gasapi.info/comlink/player",
         content_type_json(),
         body = paylist)
-    pres$status_code
+    if(pres$status_code != 200){
+        return(paste0("Data fetch error - ", pres$status_code))
+    }
+    # pres$status_code
     pcontent <- pres$content %>% rawToChar() %>% fromJSON()
     return(pcontent)
 }
 
-process_caltargets <- function(pd, speed_weighting = 10){
+pre_process_caltargets <- function(pd){
     pcontent <- pd
-    sweight <- speed_weighting/100
     ## Process data
     char_ids <- 
         pcontent$rosterUnit %>% 
@@ -94,38 +105,6 @@ process_caltargets <- function(pd, speed_weighting = 10){
             arrange(desc(n)) %>% 
             .[1,]
         res <- paste0(y$stat_id, "|", y$n)
-    }
-    weighted.spd <- function(n, g){
-        # Making every speed increment 10% more valuable than the last
-        res <- 0
-        for(i in 1:g){
-            res <- (1+sweight)^(n+i) + res
-        }
-        return(res)
-    }
-    
-    spd.probs <- function(speed_dbl, chance_to_hit_speed, cost){
-        newmin <- floor(speed_dbl + 3)
-        newmax <- newmin + 3
-        
-        data.frame(newspd = c(seq(newmin, newmax, 1))) %>% 
-            mutate(gain = newspd - floor(speed_dbl)) %>% 
-            mutate(minq = pmax(((gain - (speed_dbl %% floor(speed_dbl)) - 3) / 3),0)) %>% 
-            mutate(prob = lead(minq, 1, default = 1) - minq) %>% 
-            mutate(abs_prob = prob * chance_to_hit_speed) %>% 
-            rowwise() %>% 
-            mutate(weighted_speed_value =
-                       weighted.spd(floor(speed_dbl), gain)) %>% 
-            ungroup() %>% 
-            mutate(exp_spd_partial = gain * abs_prob) %>% 
-            mutate(exp_weighted_spd_partial = weighted_speed_value * abs_prob) %>% 
-            summarize(
-                exp_spd = sum(exp_spd_partial), 
-                exp_weighted_spd = sum(exp_weighted_spd_partial)) %>% 
-            mutate(exp_spd_percost = exp_spd / cost) %>% 
-            mutate(exp_weighted_spd_percost = exp_weighted_spd / cost)
-        # %>% 
-        #   list()
     }
     
     plan(multisession, workers = 4)
@@ -176,17 +155,154 @@ process_caltargets <- function(pd, speed_weighting = 10){
                    case_when(
                        has5rollstat == TRUE ~ 1/3,
                        has5rollstat == FALSE ~ 1/4))
+    plan(sequential)
+    return(df_speed)
+}
+
+{
+    # post_process_caltargets <- function(md, speed_weighting = 10, name){
+    #     
+    #     sweight <- speed_weighting/100
+    #     weighted.spd <- function(n, g){
+    #         # Making every speed increment 10% more valuable than the last
+    #         res <- 0
+    #         for(i in 1:g){
+    #             res <- (1+sweight)^(n+i) + res
+    #         }
+    #         return(res)
+    #     }
+    #     
+    #     spd.probs <- function(speed_dbl, chance_to_hit_speed, cost){
+    #         newmin <- floor(speed_dbl + 3)
+    #         newmax <- newmin + 3
+    #         
+    #         data.frame(newspd = c(seq(newmin, newmax, 1))) %>% 
+    #             mutate(gain = newspd - floor(speed_dbl)) %>% 
+    #             mutate(minq = pmax(((gain - (speed_dbl %% floor(speed_dbl)) - 3) / 3),0)) %>% 
+    #             mutate(prob = lead(minq, 1, default = 1) - minq) %>% 
+    #             mutate(abs_prob = prob * chance_to_hit_speed) %>% 
+    #             rowwise() %>% 
+    #             mutate(weighted_speed_value =
+    #                        weighted.spd(floor(speed_dbl), gain)) %>% 
+    #             ungroup() %>% 
+    #             mutate(exp_spd_partial = gain * abs_prob) %>% 
+    #             mutate(exp_weighted_spd_partial = weighted_speed_value * abs_prob) %>% 
+    #             summarize(
+    #                 exp_spd = sum(exp_spd_partial), 
+    #                 exp_weighted_spd = sum(exp_weighted_spd_partial)) %>% 
+    #             mutate(exp_spd_percost = exp_spd / cost) %>% 
+    #             mutate(exp_weighted_spd_percost = exp_weighted_spd / cost)
+    #         # %>% 
+    #         #   list()
+    #     }
+    #     
+    #     plan(multisession, workers = 4)
+    #     final_df <- md %>% 
+    #         select(speed_dbl, chance_to_hit_speed, cost) %>% 
+    #         future_pmap_dfr(spd.probs) %>% 
+    #         bind_cols(md, .)
+    #     # toc()
+    #     # print(paste0("^^^", w, " workers^^^"))
+    #     # }
+    #     plan(sequential)
+    #     
+    #     pname <- paste0(name, "'s")
+    #     
+    #     df_sorted <- final_df %>% 
+    #         mutate(Speed = paste0("<b>",speed_int, "</b>(", spd_roll_n, ")")) %>% 
+    #         mutate(chance_to_hit_speed = (chance_to_hit_speed * 100) %>% floor() %>% paste0("%")) %>% 
+    #         mutate(exp_spd = round(exp_spd, 2)) %>% 
+    #         mutate(exp_spd_percost = round(exp_spd_percost, 3)) %>% 
+    #         mutate(exp_weighted_spd = round(exp_weighted_spd, 2)) %>% 
+    #         ## move lower so the full precision is present for the sort
+    #         #mutate(exp_weighted_spd_percost = round(exp_weighted_spd_percost, 2)) %>% 
+    #         mutate(tier = 
+    #                    case_when(
+    #                        tier == 1 ~ "E",
+    #                        tier == 2 ~ "D",
+    #                        tier == 3 ~ "C",
+    #                        tier == 4 ~ "B",
+    #                        tier == 5 ~ "A"
+    #                    )) %>% 
+    #         mutate(Mod = paste0(rarity, "-", tier, " ", shape, " (", set, ":", primary,")")) %>% 
+    #         arrange(desc(exp_weighted_spd_percost)) %>% 
+    #         mutate(exp_weighted_spd_percost = round(exp_weighted_spd_percost, 2)) %>% 
+    #         mutate(`#` = row_number()) %>% 
+    #         select(
+    #             `#`,
+    #             `Mod (Set:Primary)` = Mod,
+    #             #Shape = shape, 
+    #             #Character = name, 
+    #             !! pname := name,
+    #             Speed, 
+    #             `Speed Remainder` = speed_remainder, 
+    #             Cost = cost, 
+    #             `Speed Hit %` = chance_to_hit_speed, 
+    #             `Avg +Speed` = exp_spd,
+    #             `Speed per cost` = exp_spd_percost,
+    #             `Weighted +Speed` = exp_weighted_spd, 
+    #             `Weighted per cost` = exp_weighted_spd_percost)
+    #     
+    #     return(df_sorted)
+    # }
+}
+
+post_process_caltargets_allweights <- function(md, name){
     
-    final_df <- df_speed %>% 
+    # sweight_vec <- c(10,25,50,100)/100
+    weighted.spd <- function(n, g, sweight){
+        # Making every speed increment 10% more valuable than the last
+        res <- 0
+        for(i in 1:g){
+            res <- (1+sweight)^(n+i) + res
+        }
+        return(res)
+    }
+    
+    spd.probs <- function(speed_dbl, chance_to_hit_speed, cost){
+        newmin <- floor(speed_dbl + 3)
+        newmax <- newmin + 3
+        
+        data.frame(newspd = c(rep(seq(newmin, newmax, 1),4))) %>% 
+            mutate(sweight = c(rep(0.10,4),
+                               rep(0.25,4),
+                               rep(0.50,4),
+                               rep(1.0,4))) %>% 
+            group_by(sweight) %>% 
+            mutate(gain = newspd - floor(speed_dbl)) %>% 
+            mutate(minq = pmax(((gain - (speed_dbl %% floor(speed_dbl)) - 3) / 3),0)) %>% 
+            mutate(prob = lead(minq, 1, default = 1) - minq) %>% 
+            mutate(abs_prob = prob * chance_to_hit_speed) %>% 
+            rowwise() %>% 
+            mutate(weighted_speed_value =
+                       weighted.spd(floor(speed_dbl), gain, sweight = sweight)) %>% 
+            ungroup() %>% 
+            mutate(exp_spd_partial = gain * abs_prob) %>% 
+            mutate(exp_weighted_spd_partial = weighted_speed_value * abs_prob) %>% 
+            group_by(sweight) %>% 
+            summarize(
+                exp_spd = sum(exp_spd_partial), 
+                exp_weighted_spd = sum(exp_weighted_spd_partial)) %>% 
+            mutate(exp_spd_percost = exp_spd / cost) %>% 
+            mutate(exp_weighted_spd_percost = exp_weighted_spd / cost) %>% 
+            nest(data = everything())
+        # %>% 
+        #   list()
+    }
+    
+    plan(multisession, workers = 4)
+    final_df <- md %>% 
         select(speed_dbl, chance_to_hit_speed, cost) %>% 
         future_pmap_dfr(spd.probs) %>% 
-        bind_cols(df_speed, .)
+        bind_cols(md, .) %>% 
+        unnest(cols = data) %>% 
+        ungroup()
     # toc()
     # print(paste0("^^^", w, " workers^^^"))
     # }
     plan(sequential)
     
-    pname <- paste0(pcontent$name, "'s")
+    pname <- paste0(name, "'s")
     
     df_sorted <- final_df %>% 
         mutate(Speed = paste0("<b>",speed_int, "</b>(", spd_roll_n, ")")) %>% 
@@ -207,6 +323,7 @@ process_caltargets <- function(pd, speed_weighting = 10){
         mutate(Mod = paste0(rarity, "-", tier, " ", shape, " (", set, ":", primary,")")) %>% 
         arrange(desc(exp_weighted_spd_percost)) %>% 
         mutate(exp_weighted_spd_percost = round(exp_weighted_spd_percost, 2)) %>% 
+        group_by(sweight) %>% 
         mutate(`#` = row_number()) %>% 
         select(
             `#`,
@@ -221,10 +338,190 @@ process_caltargets <- function(pd, speed_weighting = 10){
             `Avg +Speed` = exp_spd,
             `Speed per cost` = exp_spd_percost,
             `Weighted +Speed` = exp_weighted_spd, 
-            `Weighted per cost` = exp_weighted_spd_percost)
+            `Weighted per cost` = exp_weighted_spd_percost,
+            sweight) %>% 
+        ungroup()
     
     return(df_sorted)
-    
+}
+
+{
+    #  process_caltargets <- function(pd, speed_weighting = 10){
+    #     pcontent <- pd
+    #     sweight <- speed_weighting/100
+    #     ## Process data
+    #     char_ids <- 
+    #         pcontent$rosterUnit %>% 
+    #         select(char_id = id, 
+    #                char_definitionId = definitionId, 
+    #                equippedStatMod) %>% 
+    #         # only keep characters with mods
+    #         filter(length(equippedStatMod) > 0) %>% 
+    #         unnest(equippedStatMod)
+    #     
+    #     has.any.sec.stats <- function(x){
+    #         x %>% length() > 0 %>% return()
+    #     }
+    #     
+    #     has.sec.spd <- function(x){
+    #         # Identify Mods with speed secondaries
+    #         x %>% filter(stat$unitStatId == 5) %>% nrow() > 0 %>% return()
+    #     }
+    #     get.sec.spd.rolls <- function(x){
+    #         # Fetch rolls for speed
+    #         ## Might be unnecessary
+    #         x %>% filter(stat$unitStatId == 5) %>% 
+    #             pull(roll)
+    #     }
+    #     get.sec.spd.unscalled <- function(x){
+    #         # Fetch unscalledRolls for speed
+    #         x %>% filter(stat$unitStatId == 5) %>% 
+    #             pull(unscaledRollValue)
+    #     }
+    #     sum.sec.spd.unscalled <- function(x){
+    #         # Get current speed - does not adjust for 6-dot
+    #         x[[1]] %>% as.numeric() %>% sum()
+    #     }
+    #     get.highest.nonspeed.roll <- function(x){
+    #         # Finds the non-speed stat with most rolls, returns "stat_num|roll_n"
+    #         y <- x %>% filter(stat$unitStatId != 5) %>% 
+    #             unnest(roll) %>% 
+    #             count(stat_id = stat$unitStatId) %>% 
+    #             arrange(desc(n)) %>% 
+    #             .[1,]
+    #         res <- paste0(y$stat_id, "|", y$n)
+    #     }
+    #     weighted.spd <- function(n, g){
+    #         # Making every speed increment 10% more valuable than the last
+    #         res <- 0
+    #         for(i in 1:g){
+    #             res <- (1+sweight)^(n+i) + res
+    #         }
+    #         return(res)
+    #     }
+    #     
+    #     spd.probs <- function(speed_dbl, chance_to_hit_speed, cost){
+    #         newmin <- floor(speed_dbl + 3)
+    #         newmax <- newmin + 3
+    #         
+    #         data.frame(newspd = c(seq(newmin, newmax, 1))) %>% 
+    #             mutate(gain = newspd - floor(speed_dbl)) %>% 
+    #             mutate(minq = pmax(((gain - (speed_dbl %% floor(speed_dbl)) - 3) / 3),0)) %>% 
+    #             mutate(prob = lead(minq, 1, default = 1) - minq) %>% 
+    #             mutate(abs_prob = prob * chance_to_hit_speed) %>% 
+    #             rowwise() %>% 
+    #             mutate(weighted_speed_value =
+    #                        weighted.spd(floor(speed_dbl), gain)) %>% 
+    #             ungroup() %>% 
+    #             mutate(exp_spd_partial = gain * abs_prob) %>% 
+    #             mutate(exp_weighted_spd_partial = weighted_speed_value * abs_prob) %>% 
+    #             summarize(
+    #                 exp_spd = sum(exp_spd_partial), 
+    #                 exp_weighted_spd = sum(exp_weighted_spd_partial)) %>% 
+    #             mutate(exp_spd_percost = exp_spd / cost) %>% 
+    #             mutate(exp_weighted_spd_percost = exp_weighted_spd / cost)
+    #         # %>% 
+    #         #   list()
+    #     }
+    #     
+    #     plan(multisession, workers = 4)
+    #     
+    #     df_speed <- char_ids %>%
+    #         mutate(rarity = substr(definitionId, 2, 2) %>% 
+    #                    as.integer()) %>% 
+    #         #filter(rarity == 6) %>% 
+    #         mutate(has_secondaries = future_map_lgl(secondaryStat, ~ has.any.sec.stats(.x))) %>% 
+    #         filter(has_secondaries == TRUE) %>% 
+    #         mutate(hasspd = future_map_lgl(secondaryStat, ~ has.sec.spd(.x))) %>%
+    #         filter(hasspd == TRUE) %>%
+    #         mutate(spd_unscalled = future_map(secondaryStat, ~get.sec.spd.unscalled(.x))) %>%
+    #         mutate(spd_roll_n = future_map_dbl(spd_unscalled, function(x) length(x[[1]]))) %>%
+    #         filter(spd_roll_n < 5) %>%
+    #         mutate(sum_unscalled = future_map_dbl(spd_unscalled, ~sum.sec.spd.unscalled(.x))) %>%
+    #         # get mod data
+    #         mutate(setId = substr(definitionId, 1,1)) %>% 
+    #         left_join(modset_stat %>% select(setId, set = short_name), by = "setId") %>% 
+    #         mutate(last_digit_definitionid = 
+    #                    substr(definitionId, 3, 3) %>% as.numeric()) %>% 
+    #         left_join(modslot_shape %>% select(last_digit_definitionid, shape),
+    #                   by = "last_digit_definitionid") %>% 
+    #         unnest(primaryStat) %>% 
+    #         unnest(stat) %>% 
+    #         left_join(statname_df %>% 
+    #                       select(unitStatId = id, primary_stat = name),
+    #                   by = "unitStatId") %>% 
+    #         left_join(prim_stat_name %>% select(primary_stat, primary = short_name), by = "primary_stat") %>% 
+    #         left_join(u_namepairs_df, by = "char_definitionId") %>% 
+    #         mutate(speed_dbl = sum_unscalled/100000) %>% 
+    #         mutate(speed_dbl = case_when(
+    #             rarity == 6 ~ speed_dbl + 1,
+    #             TRUE ~ speed_dbl
+    #         )) %>% 
+    #         mutate(speed_int = floor(speed_dbl)) %>% 
+    #         mutate(speed_remainder = speed_dbl - speed_int) %>% 
+    #         mutate(highest_nonspeed = future_map_chr(secondaryStat, ~get.highest.nonspeed.roll(.x))) %>% 
+    #         mutate(highest_nonspeed_stat = str_extract(highest_nonspeed, "^[0-9]+")) %>% 
+    #         mutate(highest_nonspeed_roll = str_extract(highest_nonspeed, "[0-9]+$") %>% as.integer()) %>% 
+    #         mutate(has5rollstat = highest_nonspeed_roll == 5) %>% 
+    #         select(name, shape, rarity, tier, set, primary_stat, primary, spd_roll_n, 
+    #                spd_unscalled, sum_unscalled, speed_dbl, speed_int, 
+    #                speed_remainder, rerolledCount, highest_nonspeed, 
+    #                highest_nonspeed_stat, highest_nonspeed_roll, has5rollstat) %>% 
+    #         left_join(calibrate_cost_df, by = "rerolledCount") %>% 
+    #         mutate(chance_to_hit_speed = 
+    #                    case_when(
+    #                        has5rollstat == TRUE ~ 1/3,
+    #                        has5rollstat == FALSE ~ 1/4))
+    #     
+    #     final_df <- df_speed %>% 
+    #         select(speed_dbl, chance_to_hit_speed, cost) %>% 
+    #         future_pmap_dfr(spd.probs) %>% 
+    #         bind_cols(df_speed, .)
+    #     # toc()
+    #     # print(paste0("^^^", w, " workers^^^"))
+    #     # }
+    #     plan(sequential)
+    #     
+    #     pname <- paste0(pcontent$name, "'s")
+    #     
+    #     df_sorted <- final_df %>% 
+    #         mutate(Speed = paste0("<b>",speed_int, "</b>(", spd_roll_n, ")")) %>% 
+    #         mutate(chance_to_hit_speed = (chance_to_hit_speed * 100) %>% floor() %>% paste0("%")) %>% 
+    #         mutate(exp_spd = round(exp_spd, 2)) %>% 
+    #         mutate(exp_spd_percost = round(exp_spd_percost, 3)) %>% 
+    #         mutate(exp_weighted_spd = round(exp_weighted_spd, 2)) %>% 
+    #         ## move lower so the full precision is present for the sort
+    #         #mutate(exp_weighted_spd_percost = round(exp_weighted_spd_percost, 2)) %>% 
+    #         mutate(tier = 
+    #                    case_when(
+    #                        tier == 1 ~ "E",
+    #                        tier == 2 ~ "D",
+    #                        tier == 3 ~ "C",
+    #                        tier == 4 ~ "B",
+    #                        tier == 5 ~ "A"
+    #                    )) %>% 
+    #         mutate(Mod = paste0(rarity, "-", tier, " ", shape, " (", set, ":", primary,")")) %>% 
+    #         arrange(desc(exp_weighted_spd_percost)) %>% 
+    #         mutate(exp_weighted_spd_percost = round(exp_weighted_spd_percost, 2)) %>% 
+    #         mutate(`#` = row_number()) %>% 
+    #         select(
+    #             `#`,
+    #             `Mod (Set:Primary)` = Mod,
+    #             #Shape = shape, 
+    #             #Character = name, 
+    #             !! pname := name,
+    #             Speed, 
+    #             `Speed Remainder` = speed_remainder, 
+    #             Cost = cost, 
+    #             `Speed Hit %` = chance_to_hit_speed, 
+    #             `Avg +Speed` = exp_spd,
+    #             `Speed per cost` = exp_spd_percost,
+    #             `Weighted +Speed` = exp_weighted_spd, 
+    #             `Weighted per cost` = exp_weighted_spd_percost)
+    #     
+    #     return(df_sorted)
+    #     
+    # }
 }
 
 customGreen0 = "#DeF7E9"
@@ -261,49 +558,85 @@ col_sort_options <- c(
 ui <- fluidPage(
     
     # Application title
-    titlePanel("Unleashed Mod Calibration Candidates - Closed Beta"),
+    titlePanel("Unleashed Mod Calibration Candidates"),
+    h4("v1.0 - last updated 2023-07-06"),
     
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
-        sidebarPanel(
-            numericInput("acode",
-                         "Ally Code:",
-                         min = 111111111,
-                         max = 999999999,
-                         #value = 491988799,
-                         #value = 587792678,
-                         value = NULL,
-                         width = '50%'
-            ),
+        sidebarPanel(#width = 5,
+            textInput("acode",
+                      "Ally Code:",
+                      value = NULL,
+                      width = '50%'
+                      ),
+            # numericInput("acode",
+            #              "Ally Code (no dashes):",
+            #              min = 111111111,
+            #              max = 999999999,
+            #              step = NA,
+            #              # value = 491988799,
+            #              #value = 587792678,
+            #              value = NULL,
+            #              width = '50%'
+            # ),
             actionButton(inputId = "pfetch_button",
                          label = "Refresh Mod Data"),
-            "(can take a minute)"
+            "(takes ~1 minute)",
+            
+            # sliderInput(inputId = "spd_weight_input",
+            #             label = "Speed Weight (prioritizes higher speed mods)",
+            #             min = 0,
+            #             max = 100,
+            #             step = 1,
+            #             value = 10,
+            #             ticks = TRUE,
+            #             width = '400px'),
+            
             # actionButton(inputId = "process_mods_button",
             #              label = "Analyze Mod Data (slow)")
         ),
         
-        mainPanel(
+        mainPanel(#width = 5,
             textOutput(outputId = "feedback1"),
-            textOutput(outputId = "pname"))
+            textOutput(outputId = "pname"),
+            # textOutput(outputId = "feedback2"),
+            # textOutput(outputId = "feedback3")
+            
+            
+        )
     ),
     verticalLayout(
         flowLayout(
-            sliderInput(inputId = "numModsToShow",
-                        label = "Number of Mods to Show",
-                        min = 10,
-                        max = 100,
-                        step = 10,
-                        value = 10,
-                        ticks = FALSE,
-                        width = '300px'),
-            selectizeInput(inputId = "sortColumnChoice",
-                           label = "Sort By",
-                           choices = col_sort_options,
-                           selected = "Weighted per cost",
-                           multiple = FALSE),
-            checkboxInput(inputId = "sortChoice",
-                          label = "Sort Descending",
-                          value = TRUE),
+            verticalLayout(
+                sliderTextInput(inputId = "spd_weight_text_input",
+                                label = "Speed Weight (priority for mods with higher total speed)",
+                                choices = c("Low",
+                                            "Moderate",
+                                            "High",
+                                            "Extreme"),
+                                selected= "Low",
+                                grid = TRUE,
+                                hide_min_max = TRUE
+                ),
+                sliderInput(inputId = "numModsToShow",
+                            label = "Number of Mods to Show",
+                            min = 10,
+                            max = 100,
+                            step = 10,
+                            value = 10,
+                            ticks = FALSE,
+                            width = '300px')
+            ),
+            verticalLayout(
+                selectizeInput(inputId = "sortColumnChoice",
+                               label = "Sort By",
+                               choices = col_sort_options,
+                               selected = "Weighted per cost",
+                               multiple = FALSE),
+                checkboxInput(inputId = "sortChoice",
+                              label = "Sort Descending",
+                              value = TRUE)
+            ),
             # checkboxGroupInput(inputId = "dotsShowChoice",
             #                    label = "",
             #                    choices = c("5-dot", "6-dot"),
@@ -335,7 +668,7 @@ ui <- fluidPage(
     p(strong("Cost"), " - Number of Attenuators required to calibrate"),
     p(strong("Speed Hit %"), " - Chance that a calibration will give stats to speed (25% normally, 33% if
 another stat has 5-rolls)"),
-    p(strong("Avg +Speed"), " - Expected speed gain from any one calibration (combines Speed Remainder and Speed Hit %"),
+    p(strong("Avg +Speed"), " - Expected speed gain from any one calibration (combines Speed Remainder and Speed Hit %)"),
     p(strong("Speed per Cost"), " - Avg +Speed divided by Cost"),
     p(strong("Weighted +Speed"), " - Expected speed gain, with each speed increment given additional value based on
 the final total speed (will prioritize higher speed mods)"),
@@ -349,39 +682,65 @@ for a calibration candidate, though the player should consider overall mod syner
 server <- function(input, output, session) {
     pdata_react <- reactiveValues(datapull = list())
     
+    spd_weight <- reactive(
+        if(input$spd_weight_text_input == "Low"){
+            return(0.10)
+        } else if(input$spd_weight_text_input == "Moderate"){
+            return(0.25)
+        } else if(input$spd_weight_text_input == "High"){
+            return(0.50)
+        } else if(input$spd_weight_text_input == "Extreme"){
+            return(1.00)
+        }
+    )
+    
     observeEvent(input$pfetch_button, {
         # pdata <- reactive({
         #     pdatatemp <- get.fresh.pdata(input$acode) 
         #     return(pdatatemp)
         # pdata <- get.fresh.pdata(input$acode)
-        pulled_acode <- input$acode
+        pulled_acode_raw <- input$acode
         
-        if(!pulled_acode %in% whitelist$ally_code){
-            output$feedback1 <- renderText(paste0("Allycode ", pulled_acode, " is not whitelisted for this closed beta. I hope to release this more widely soon"))
+        if(str_detect(pulled_acode_raw, "-")){
+            pulled_acode <- str_remove_all(pulled_acode_raw, "-") %>% 
+                as.numeric()
         } else {
-            
-            # if(pulled_acode %in% whitelist$ally_code){
-            
-            # output$feedback1 <- renderText(paste0("Pulling data for ", pulled_acode))
-            pdata_react$datapull <- get.fresh.pdata(input$acode)
-            
-            # output$feedback1 <- renderText(paste0("Pulled ", 
-            #                                       pdata_react$datapull %>% .$rosterUnit %>% .$equippedStatMod %>% length(),
-            #                                       " units for allycode ", pulled_acode, "\n", "Processing... (might take a minute)"))
-            
-            pdata_react$processed <- process_caltargets(pdata_react$datapull) 
-            
-            
-            output$feedback1 <- renderText(paste0("Pulled ", 
-                                                  pdata_react$datapull %>% .$rosterUnit %>% .$equippedStatMod %>% length(),
-                                                  " units for allycode ", pulled_acode, " --- ", "Processing Complete!"))
-            
-            # output$feedback2 <- renderPrint(head(pdata_react$processed))
+            pulled_acode <- as.numeric(pulled_acode_raw)
+        }
+        
+        
+        if(is.na(as.numeric(pulled_acode))){
+            output$feedback1 <- renderText(paste0(pulled_acode_raw, " is not a valid ally code, please enter again using only numbers"))
+        } else if(pulled_acode < 111111111 | pulled_acode > 999999999){
+            output$feedback1 <- renderText(paste0(pulled_acode_raw, " is not a valid 9-digit ally code, please enter again using only numbers"))
+        # } else if(!pulled_acode %in% whitelist$ally_code){
+        #     output$feedback1 <- renderText(paste0("Allycode ", pulled_acode, " is not whitelisted for this closed beta. I hope to release this more widely soon"))
+        } else {
+            withProgress(message = 'Pulling equipped mods', style = "notification", value = 0.1, {
+                raw_pull <- get.fresh.pdata(pulled_acode)
+                
+                if(is.character(raw_pull)){
+                    output$feedback1 <- renderText(paste0(raw_pull))
+                } else {
+                    pdata_react$datapull <- raw_pull
+                    # output$feedback1 <- renderText(paste0("Pulled ",
+                    #                                       pdata_react$datapull %>% .$rosterUnit %>% .$equippedStatMod %>% length(),
+                    #                                       " units for allycode ", pulled_acode))
+                }
+            })
         }
         # } else {break}
         
         
     })
+    
+    observeEvent(pdata_react$datapull, ignoreNULL = TRUE, ignoreInit = TRUE, {
+        withProgress(message = 'Processing mod data', style = "notification", value = 0.4, {
+            pdata_react$pre_processed <- pre_process_caltargets(pdata_react$datapull) 
+            # output$feedback2 <- renderText(paste0("Mods extracted"))
+        })
+    }
+    )
     
     output$pname <- renderText(pdata_react$datapull$name)
     
@@ -399,11 +758,45 @@ server <- function(input, output, session) {
     #     }
     # }
     
-    observeEvent(pdata_react$processed, ignoreNULL = TRUE, {
+    # observeEvent(pdata_react$pre_processed, ignoreNULL = TRUE, {
+    #     pdata_react$post_processed <- 
+    #         pdata_react$pre_processed %>%
+    #         post_process_caltargets(speed_weighting = spd_weight(),
+    #                                 name = pdata_react$datapull$name)
+    # }
+    # )
+    # 
+    # observeEvent(spd_weight(), ignoreInit = TRUE,{
+    #     req(pdata_react$pre_processed)
+    #     pdata_react$post_processed <- 
+    #         pdata_react$pre_processed %>%
+    #         post_process_caltargets(speed_weighting = spd_weight(),
+    #                                 name = pdata_react$datapull$name)
+    # })
+    
+    observeEvent(pdata_react$pre_processed, ignoreNULL = TRUE, {
+        withProgress(message = 'Analyzing mods', style = "notification", value = 0.8, {
+            pdata_react$post_processed <-
+                pdata_react$pre_processed %>%
+                post_process_caltargets_allweights(name = pdata_react$datapull$name)
+            # output$feedback3 <- renderText(paste0("Processing Complete!"))
+        })
+        output$feedback1 <- renderText(paste0("Pulled ",
+                                              pdata_react$datapull %>% .$rosterUnit %>% .$equippedStatMod %>% length(),
+                                              " units for allycode ", input$acode, " --- ", "Processing Complete!"))
+    }
+    )
+    
+    
+    observeEvent(pdata_react$post_processed, ignoreNULL = TRUE, {
         output$table <- renderFormattable(
             formattable({
                 # Table filter/arrange
-                pdata_react$processed %>%
+                pdata_react$post_processed %>%
+                    filter(sweight == spd_weight()) %>% 
+                    select(-sweight) %>% 
+                    # pdata_react$pre_processed %>%
+                    #     post_process_caltargets(speed_weighting = input$spd_weight_input) %>%
                     filter(str_sub(`Mod (Set:Primary)`, 1, 3) %in% input$m5dotShowChoice |
                                str_sub(`Mod (Set:Primary)`, 1, 3) %in% input$m6dotShowChoice) %>% 
                     # 5 or 6 dot mods
